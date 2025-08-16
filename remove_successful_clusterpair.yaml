@@ -1,0 +1,57 @@
+---
+- name: Remove successfully created clusterpair and associated resources
+  hosts: localhost
+  gather_facts: no
+  vars:
+    cluster_configs:
+      - name: "cluster_a"
+        kubeconfig: "{{ cluster_a_kubeconfig }}"
+        context: "{{ cluster_a_context | default('') }}"
+        kubeconfig_path: "{{ playbook_dir }}/pxdr-sa-{{ cluster_a_name | default('cluster_a') }}-kubeconfig.yaml"
+      - name: "cluster_b"
+        kubeconfig: "{{ cluster_b_kubeconfig }}"
+        context: "{{ cluster_b_context | default('') }}"
+        kubeconfig_path: "{{ playbook_dir }}/pxdr-sa-{{ cluster_b_name | default('cluster_b') }}-kubeconfig.yaml"
+
+  pre_tasks:
+  - include_tasks:
+      file: "{{ playbook_dir }}/tasks/setup.yaml"
+      apply:
+        tags:
+        - setup
+    tags:
+    - setup
+
+  tasks:
+  - name: Delete the clusterpair
+    kubernetes.core.k8s:
+      kubeconfig: "{{ item.kubeconfig }}"
+      context: "{{ item.context }}"
+      state: absent
+      api_version: stork.libopenstorage.org/v1alpha1
+      kind: ClusterPair
+      name: "{{ clusterpair_name }}"
+      namespace: "{{ admin_namespace }}"
+    loop: "{{ cluster_configs }}"
+
+  - name: Delete the objectstorelocation
+    kubernetes.core.k8s:
+      kubeconfig: "{{ item.kubeconfig }}"
+      context: "{{ item.context }}"
+      state: absent
+      api_version: stork.libopenstorage.org/v1alpha1
+      kind: BackupLocation
+      name: "{{ clusterpair_name }}"
+      namespace: "{{ admin_namespace }}"
+    loop: "{{ cluster_configs }}"
+
+  - name: Delete the secret
+    kubernetes.core.k8s:
+      kubeconfig: "{{ item.kubeconfig }}"
+      context: "{{ item.context }}"
+      state: absent
+      api_version: v1
+      kind: Secret
+      name: "{{ clusterpair_name }}"
+      namespace: "{{ admin_namespace }}"
+    loop: "{{ cluster_configs }}"

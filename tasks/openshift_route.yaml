@@ -1,0 +1,45 @@
+  - name: Create Portworx API Route in all clusters (if OpenShift)
+    kubernetes.core.k8s:
+      kubeconfig: "{{ item.kubeconfig }}"
+      context: "{{ item.context }}"
+      definition:
+        apiVersion: route.openshift.io/v1
+        kind: Route
+        metadata:
+          name: portworx-api
+          namespace: "{{ portworx_namespace }}"
+        spec:
+          path: /
+          to:
+            kind: Service
+            name: portworx-api
+            weight: 100
+          port:
+            targetPort: px-api
+          tls:
+            termination: edge
+          wildcardPolicy: None
+      state: present
+    loop: "{{ cluster_configs }}"
+
+  - name: Retrieve Portworx API Route resources from all clusters (if OpenShift)
+    kubernetes.core.k8s_info:
+      kubeconfig: "{{ item.kubeconfig }}"
+      context: "{{ item.context }}"
+      namespace: portworx
+      kind: Route
+      name: portworx-api
+      api_version: route.openshift.io/v1
+    register: route_info_results
+    loop: "{{ cluster_configs }}"
+    loop_control:
+      index_var: my_idx
+    until: route_info_results.resources | length > 0 and route_info_results.resources[0].status.ingress | length > 0
+    retries: 10
+    delay: 2
+
+  - name: Set src_ep_url and dest_ep_url facts from the Route hosts (if OpenShift)
+    set_fact:
+      src_ep_url: "https://{{ route_info_results.results[0].resources[0].status.ingress[0].host }}"
+      dest_ep_url: "https://{{ route_info_results.results[1].resources[0].status.ingress[0].host }}"
+

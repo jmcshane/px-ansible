@@ -1,0 +1,19 @@
+# REQUIRED VARS FOR PORTWORX ASYNC DR PXDR-SA CLUSTERPAIR PLAYBOOK
+
+# Cluster A connection details
+cluster_a_kubeconfig:
+
+# Cluster B connection details
+cluster_b_kubeconfig:
+
+# S3 Object Store DR Settings (required for storkctl clusterpair creation)
+s3_access_key:
+s3_secret_key:
+s3_bucket:
+
+#OPTIONAL
+s3_endpoint:
+s3_region:
+
+## Optional openshift route setup
+is_openshift:

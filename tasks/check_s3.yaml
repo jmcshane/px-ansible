@@ -1,0 +1,16 @@
+---
+  - name: List all objects in the target S3 bucket
+    amazon.aws.s3_object:
+      bucket: "{{ s3_bucket }}"
+      access_key: "{{ s3_access_key }}"
+      secret_key: "{{ s3_secret_key }}"
+      endpoint_url: "{{ s3_endpoint }}"
+      region: "{{ s3_region }}"
+      mode: list
+      max_keys: 2
+    register: s3_list_result
+
+  - name: Fail if the S3 list operation did not succeed
+    fail:
+      msg: "Failed to list objects in bucket {{ s3_bucket }}: {{ s3_list_result.msg | default('Unknown error') }}"
+    when: s3_list_result.failed | default(false)

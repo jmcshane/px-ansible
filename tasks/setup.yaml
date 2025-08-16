@@ -1,0 +1,30 @@
+  - name: Get Cluster A context from kubeconfig if not provided
+    ansible.builtin.command: kubectl config current-context --kubeconfig {{ cluster_a_kubeconfig }}
+    register: cluster_a_context_result
+    when: cluster_a_context | default('') == ''
+    changed_when: false
+    tags:
+    - setup
+
+  - name: Set Cluster A context variable if not provided
+    set_fact:
+      cluster_a_context: "{{ cluster_a_context_result.stdout }}"
+    when: cluster_a_context | default('') == ''
+    tags:
+    - setup
+
+  - name: Get Cluster B context from kubeconfig if not provided
+    ansible.builtin.command: kubectl config current-context --kubeconfig {{ cluster_b_kubeconfig }}
+    register: cluster_b_context_result
+    when: cluster_b_context | default('') == ''
+    changed_when: false
+    tags:
+    - setup
+
+  - name: Set Cluster B context variable if not provided
+    set_fact:
+      cluster_b_context: "{{ cluster_b_context_result.stdout }}"
+    when: cluster_b_context | default('') == ''
+    tags:
+    - setup
+

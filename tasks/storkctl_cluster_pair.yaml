@@ -1,0 +1,64 @@
+---
+  - name: Find first pod with label "name=stork" in Portworx namespace
+    kubernetes.core.k8s_info:
+      kubeconfig: "{{ cluster_configs[0].kubeconfig }}"
+      context: "{{ cluster_configs[0].context }}"
+      namespace: "{{ portworx_namespace }}"
+      kind: Pod
+      label_selectors:
+        - "name=stork"
+    register: stork_pod_info
+
+  - name: Set stork_pod_name fact
+    set_fact:
+      stork_pod_name: "{{ stork_pod_info.resources[0].metadata.name }}"
+    when: stork_pod_info.resources|length > 0
+
+  - name: Copy Cluster A kubeconfig to stork pod
+    kubernetes.core.k8s_cp:
+      kubeconfig: "{{ cluster_configs[0].kubeconfig }}"
+      context: "{{ cluster_configs[0].context }}"
+      namespace: "{{ portworx_namespace }}"
+      pod: "{{ stork_pod_name }}"
+      local_path: "{{ cluster_configs[0].kubeconfig_path }}"
+      remote_path: "/tmp/cluster_a_kubeconfig.yaml"
+      state: to_pod
+
+  - name: Copy Cluster B kubeconfig to stork pod
+    kubernetes.core.k8s_cp:
+      kubeconfig: "{{ cluster_configs[0].kubeconfig }}"
+      context: "{{ cluster_configs[0].context }}"
+      namespace: "{{ portworx_namespace }}"
+      pod: "{{ stork_pod_name }}"
+      local_path: "{{ cluster_configs[1].kubeconfig_path }}"
+      remote_path: "/tmp/cluster_b_kubeconfig.yaml"
+      state: to_pod
+
+  - name: Build storkctl command
+    set_fact:
+      storkctl_cmd: >-
+        {{ storkctl_path }} create clusterpair {{ clusterpair_name }}
+        --namespace {{ admin_namespace }}
+        --src-kube-file /tmp/cluster_a_kubeconfig.yaml
+        --dest-kube-file /tmp/cluster_b_kubeconfig.yaml
+        --provider s3
+        --s3-endpoint {{ s3_endpoint }}
+        --s3-access-key {{ s3_access_key }}
+        --s3-secret-key {{ s3_secret_key }}
+        --s3-region {{ s3_region }}
+        --bucket {{ s3_bucket }}
+        {% if src_ep_url is defined and src_ep_url != omit and src_ep_url | length > 0 %} --src-ep {{ src_ep_url }} {% endif %}
+        {% if dest_ep_url is defined and dest_ep_url != omit and dest_ep_url | length > 0 %} --dest-ep {{ dest_ep_url }} {% endif %}
+
+  - name: Execute storkctl command inside stork pod
+    kubernetes.core.k8s_exec:
+      kubeconfig: "{{ cluster_configs[0].kubeconfig }}"
+      context: "{{ cluster_configs[0].context }}"
+      namespace: "{{ portworx_namespace }}"
+      pod: "{{ stork_pod_name }}"
+      command: "{{ storkctl_cmd }}"
+    register: storkctl_output
+
+  - name: Debug storkctl output
+    debug:
+      var: storkctl_output.stdout

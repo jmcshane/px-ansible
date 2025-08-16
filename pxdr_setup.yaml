@@ -1,0 +1,98 @@
+---
+- name: Portworx pxdr-sa Service Account, Kubeconfig Generation, and ClusterPair Creation
+  hosts: localhost
+  gather_facts: no
+  vars:
+    cluster_configs:
+      - name: "cluster_a"
+        kubeconfig: "{{ cluster_a_kubeconfig }}"
+        context: "{{ cluster_a_context | default('') }}"
+        kubeconfig_path: "{{ playbook_dir }}/pxdr-sa-{{ cluster_a_name | default('cluster_a') }}-kubeconfig.yaml"
+      - name: "cluster_b"
+        kubeconfig: "{{ cluster_b_kubeconfig }}"
+        context: "{{ cluster_b_context | default('') }}"
+        kubeconfig_path: "{{ playbook_dir }}/pxdr-sa-{{ cluster_b_name | default('cluster_b') }}-kubeconfig.yaml"
+    pxdr_service_account: "{{ sa_name | default('pxdr-sa') }}"
+    # S3 and DR parameters, REQUIRED to be set by user (can also be passed via group_vars)
+    src_ep_url: "{{ src_ep | default(omit) }}"
+    dest_ep_url: "{{ dest_ep | default(omit) }}"
+
+  pre_tasks:
+  - include_tasks:
+      file: "{{ playbook_dir }}/tasks/setup.yaml"
+      apply:
+        tags:
+        - setup
+    tags:
+    - setup
+    
+  tasks:
+  - name: check s3
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/check_s3.yaml"
+      apply:
+        tags: s3
+    tags:
+    - s3
+  
+  - name: openshift route setup
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/openshift_route.yaml"
+      apply:
+        tags:
+        - openshift
+        - openshift-route
+    when: 
+    - is_openshift | d(false) | bool
+    - use_openshift_route_for_portworx | d(true) | bool
+    tags:
+    - openshift
+
+  - name: create DR kubeconfigs
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/create_kubeconfig.yaml"
+      apply:
+        tags:
+        - kubeconfig
+        - dr
+    tags:
+    - kubeconfig
+    - dr
+
+  - name: run storkctl create cluster pair
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/storkctl_cluster_pair.yaml"
+      apply:
+        tags:
+        - kubeconfig
+        - dr
+    tags:
+    - kubeconfig
+    - dr
+
+  - name: confirm clusterpair healthy
+    kubernetes.core.k8s_info:
+      kubeconfig: "{{ item.kubeconfig }}"
+      context: "{{ item.context }}"
+      name: "{{ clusterpair_name }}"
+      namespace: "{{ admin_namespace }}"
+      kind: ClusterPair
+      api_version: stork.libopenstorage.org/v1alpha1
+    register: cluster_pair_results
+    loop: "{{ cluster_configs }}"
+    loop_control:
+      index_var: my_idx
+    until: cluster_pair_results.resources | length > 0 and cluster_pair_results.resources[0].status.schedulerStatus == "Ready" and cluster_pair_results.resources[0].status.storageStatus == "Ready"
+    retries: 12
+    delay: 5
+    tags:
+    - check    
+
+  - name: Cleanup
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/cleanup_local.yaml"
+      apply:
+        tags:
+        - cleanup
+    tags:
+    - cleanup

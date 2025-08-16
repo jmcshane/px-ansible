@@ -1,0 +1,6 @@
+---
+  - name: Ensure file is absent
+    ansible.builtin.file:
+      path: "{{ item.kubeconfig_path }}"
+      state: absent
+    loop: "{{ cluster_configs }}"
