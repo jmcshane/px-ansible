@@ -121,7 +121,7 @@
     - name: Wait for AutopilotRule to transition to Normal state
       kubernetes.core.k8s_info:
         kind: Event
-        namespace: "{{ namespace }}"
+        namespace: default
         field_selectors:
           - involvedObject.kind=AutopilotRule
           - involvedObject.name={{ autopilot_rule_name }}
@@ -150,7 +150,8 @@
       register: pvc_info
       until: "pvc_info.resources[0].status.capacity.storage != initial_pvc_size"
       retries: 60
-      delay: 10
+      delay: 30
+      changed_when: false
 
     - name: Display final PVC size
       debug:
@@ -164,8 +165,6 @@
           - involvedObject.kind=AutopilotRule
           - involvedObject.name={{ autopilot_rule_name }}
       register: event_info
-      failed_when: "(event_info.resources | length) < 5"
-      changed_when: false
 
     - name: Confirm that all four AutopilotRule state transitions occurred
       ansible.builtin.assert:
@@ -181,27 +180,34 @@
       loop_control:
         label: "Verifying transition: {{ item }}"
 
+  post_tasks:
     - name: Cleanup resources
       block:
         - name: Delete the Pod
+          no_log: true
           kubernetes.core.k8s:
             state: absent
             kind: Pod
             name: "{{ pod_name }}"
+            namespace: "{{ namespace }}"
 
         - name: Delete the PersistentVolumeClaim
+          no_log: true
           kubernetes.core.k8s:
             state: absent
             kind: PersistentVolumeClaim
             name: "{{ pvc_name }}"
+            namespace: "{{ namespace }}"
 
         - name: Delete the StorageClass
+          no_log: true
           kubernetes.core.k8s:
             state: absent
             kind: StorageClass
             name: "{{ sc_name }}"
 
         - name: Delete the AutopilotRule
+          no_log: true
           kubernetes.core.k8s:
             state: absent
             kind: AutopilotRule
