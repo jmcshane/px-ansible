@@ -92,6 +92,7 @@
               matchLabels:
                 app: "{{ app_label_value }}"
             conditions:
+              for: 2
               expressions:
               - key: "100 * (px_volume_usage_bytes / px_volume_capacity_bytes)"
                 operator: "Gt"
@@ -150,7 +151,7 @@
       register: pvc_info
       until: "pvc_info.resources[0].status.capacity.storage != initial_pvc_size"
       retries: 60
-      delay: 30
+      delay: 60
       changed_when: false
 
     - name: Display final PVC size
@@ -160,7 +161,7 @@
     - name: Wait for AutopilotRule events to be generated
       kubernetes.core.k8s_info:
         kind: Event
-        namespace: "{{ namespace }}"
+        namespace: default
         field_selectors:
           - involvedObject.kind=AutopilotRule
           - involvedObject.name={{ autopilot_rule_name }}
