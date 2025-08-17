@@ -1,0 +1,42 @@
+---
+
+- name: Fail if px_backup_url is not provided
+  fail:
+    msg: "px_backup_url must be specified to register a cluster in PX-Backup."
+  when: px_backup_url is undefined or px_backup_url | length == 0
+
+- name: Fail if pxcentral_auth_url is not provided
+  fail:
+    msg: "pxcentral_auth_url must be specified to register a cluster in PX-Backup."
+  when: pxcentral_auth_url is undefined or pxcentral_auth_url | length == 0
+
+- name: Fail if either px_backup_username or px_backup_password is not provided
+  fail:
+    msg: "Both px_backup_username and px_backup_password must be specified for PX-Backup authentication."
+  when: px_backup_username is undefined or px_backup_password is undefined
+        or px_backup_username | length == 0 or px_backup_password | length == 0
+
+- name: Request bearer token
+  purepx.px_backup.auth:
+    auth_url: "{{ pxcentral_auth_url }}"
+    client_id: "{{ pxcentral_client_id | default('pxcentral') }}"
+    username: "{{ px_backup_username }}"
+    password: "{{ px_backup_password }}"
+    token_duration: "{{ token_duration | default('1h') }}"
+    verify_ssl: "{{ pxcentral_verify_ssl | default(false) }}"
+  register: pxbackup_auth_result
+
+- name: Fail if PX-Backup authentication fails
+  fail:
+    msg: "PX-Backup authentication failed: {{ pxbackup_auth_result.msg | default('Unknown error') }}"
+  when: pxbackup_auth_result.failed | default(false)
+
+- name: Register cluster in PX-Backup using kubeconfig and bearer token
+  purepx.px_backup.cluster:
+    api_url: "{{ px_backup_url }}"
+    org_id: "{{ org_id | default('default') }}"
+    operation: CREATE
+    token: "{{ pxbackup_auth_result.access_token }}"
+    kubeconfig: "{{ lookup('ansible.builtin.file', cluster.kubeconfig_path) }}"
+    name: "{{ cluster.name }}"
+

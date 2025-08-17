@@ -1,30 +1,32 @@
-  - name: Get Cluster A context from kubeconfig if not provided
-    ansible.builtin.command: kubectl config current-context --kubeconfig {{ cluster_a_kubeconfig }}
-    register: cluster_a_context_result
-    when: cluster_a_context | default('') == ''
+
+  - name: Get current context if empty
+    ansible.builtin.command: kubectl config current-context --kubeconfig {{ setup_cluster.kubeconfig }}
+    register: context_result
+    when: setup_cluster.context | default('') == ''
     changed_when: false
     tags:
     - setup
-
-  - name: Set Cluster A context variable if not provided
+  
+  - name: set cluster fact
     set_fact:
-      cluster_a_context: "{{ cluster_a_context_result.stdout }}"
-    when: cluster_a_context | default('') == ''
-    tags:
-    - setup
+      cluster_tmp:
+        name: "{{ setup_cluster.name }}"
+        kubeconfig: "{{ setup_cluster.kubeconfig }}"
+        context: "{{ context_result.stdout }}"
+        kubeconfig_path: "{{ playbook_dir }}/pxdr-sa-{{ setup_cluster.name | default('cluster_a') }}-kubeconfig.yaml"
+    when: setup_cluster.context | default('') == ''
 
-  - name: Get Cluster B context from kubeconfig if not provided
-    ansible.builtin.command: kubectl config current-context --kubeconfig {{ cluster_b_kubeconfig }}
-    register: cluster_b_context_result
-    when: cluster_b_context | default('') == ''
-    changed_when: false
-    tags:
-    - setup
-
-  - name: Set Cluster B context variable if not provided
+  - name: set cluster fact
     set_fact:
-      cluster_b_context: "{{ cluster_b_context_result.stdout }}"
-    when: cluster_b_context | default('') == ''
+      cluster_tmp:
+        name: "{{ setup_cluster.name }}"
+        kubeconfig: "{{ setup_cluster.kubeconfig }}"
+        context: "{{ setup_cluster.context }}"
+        kubeconfig_path: "{{ playbook_dir }}/{{ setup_cluster.name | default('cluster_a') }}-kubeconfig.yaml"
+    when: setup_cluster.context | default('') != ''
+
+  - name: Set cluster if not default
+    set_fact:
+      cluster_configs: "{{ cluster_configs | default([]) + [cluster_tmp]}}"
     tags:
     - setup
-

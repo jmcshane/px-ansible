@@ -15,3 +15,10 @@ s3_region:
 
 ## Optional openshift route setup
 is_openshift:
+
+
+clusters:
+  - name: "cluster_a"
+    kubeconfig: "{{ cluster_a_kubeconfig }}"
+  - name: "cluster_b"
+    kubeconfig: "{{ cluster_b_kubeconfig }}"

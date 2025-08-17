@@ -1,0 +1,16 @@
+### Required inputs for backup tasks
+px_backup_url:
+pxcentral_auth_url:
+px_backup_username:
+px_backup_password:
+
+
+## Optional
+pxcentral_verify_ssl:
+token_duration:
+
+## Clusters to add to pxbackup
+clusters:
+  - name: "cluster_a"
+    kubeconfig: "{{ cluster_a_kubeconfig }}"
+    

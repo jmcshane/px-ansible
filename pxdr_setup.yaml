@@ -3,16 +3,6 @@
   hosts: localhost
   gather_facts: no
   vars:
-    cluster_configs:
-      - name: "cluster_a"
-        kubeconfig: "{{ cluster_a_kubeconfig }}"
-        context: "{{ cluster_a_context | default('') }}"
-        kubeconfig_path: "{{ playbook_dir }}/pxdr-sa-{{ cluster_a_name | default('cluster_a') }}-kubeconfig.yaml"
-      - name: "cluster_b"
-        kubeconfig: "{{ cluster_b_kubeconfig }}"
-        context: "{{ cluster_b_context | default('') }}"
-        kubeconfig_path: "{{ playbook_dir }}/pxdr-sa-{{ cluster_b_name | default('cluster_b') }}-kubeconfig.yaml"
-    pxdr_service_account: "{{ sa_name | default('pxdr-sa') }}"
     # S3 and DR parameters, REQUIRED to be set by user (can also be passed via group_vars)
     src_ep_url: "{{ src_ep | default(omit) }}"
     dest_ep_url: "{{ dest_ep | default(omit) }}"
@@ -23,6 +13,9 @@
       apply:
         tags:
         - setup
+    loop: "{{ clusters }}"
+    loop_control:
+      loop_var: setup_cluster
     tags:
     - setup
     
@@ -49,6 +42,8 @@
     - openshift
 
   - name: create DR kubeconfigs
+    vars:
+      sa_name: "{{ pxdr_service_account | default('pxdr-sa') }}"
     include_tasks:
       file: "{{ playbook_dir }}/tasks/create_kubeconfig.yaml"
       apply:

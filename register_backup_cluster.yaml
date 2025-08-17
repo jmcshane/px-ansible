@@ -1,0 +1,51 @@
+---
+- name: Register cluster in pxbackup
+  hosts: localhost
+  gather_facts: no
+  pre_tasks:
+  - name: Setup the cluster_configs variable
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/setup.yaml"
+      apply:
+        tags:
+        - setup
+    loop: "{{ clusters }}"
+    loop_control:
+      loop_var: setup_cluster
+    tags:
+    - setup
+
+  tasks:
+  - name: create backup sa kubeconfigs
+    vars:
+      sa_name: "{{ pxbackup_service_account | default('pxbackup-sa') }}"
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/create_kubeconfig.yaml"
+      apply:
+        tags:
+        - kubeconfig
+    tags:
+    - kubeconfig
+
+  - name: create cluster with kubeconfigs
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/pxbackup_cluster.yaml"
+      apply:
+        tags:
+        - kubeconfig
+        - backup
+    loop: "{{ cluster_configs }}"
+    loop_control:
+      loop_var: cluster
+    tags:
+    - kubeconfig
+    - backup
+
+  - name: Cleanup
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/cleanup_local.yaml"
+      apply:
+        tags:
+        - cleanup
+    tags:
+    - cleanup

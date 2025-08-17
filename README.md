@@ -13,7 +13,7 @@ The following workflows are supported:
 
 * Async DR setup two clusters - [pxdr_setup.yaml](./pxdr_setup.yaml)
     * Tear down DR setup - [remove_clusterpair.yaml](./remove_clusterpair.yaml)
-
+* Register backup cluster - [register_backup_cluster.yaml](./register_backup_cluster.yaml)
 
 ### Async DR Setup/Teardown
 
@@ -30,3 +30,7 @@ To tear down the created clusterpair, run:
 ```console
 $ ansible-playbook remove_clusterpair.yaml -e @<vars_file>
 ```
+
+### Backup Cluster Add
+
+Using the inputs at [backup_cluster_register.yaml](./sample_inputs/backup_cluster_register.yaml), you can create new service accounts for backup to use and register the cluster with the backup UI.

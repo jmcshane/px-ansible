@@ -4,31 +4,3 @@ portworx_namespace: portworx
 s3_endpoint: https://s3.amazonaws.com
 s3_region: us-east-1
 storkctl_path: "/storkctl/linux/storkctl"
-pxdr_sa_manifest: |-
-  apiVersion: v1
-  kind: ServiceAccount
-  metadata:
-    name: pxdr-sa
-    namespace: {{ admin_namespace }}
-  ---
-  apiVersion: v1
-  kind: Secret
-  type: kubernetes.io/service-account-token
-  metadata:
-    name: pxdr-sa
-    namespace: {{ admin_namespace }}
-    annotations:
-      kubernetes.io/service-account.name: pxdr-sa
-  ---
-  apiVersion: rbac.authorization.k8s.io/v1
-  kind: ClusterRoleBinding
-  metadata:
-    name: pxdr-sa-clusterrolebinding
-  subjects:
-  - kind: ServiceAccount
-    name: pxdr-sa
-    namespace: {{ admin_namespace }}
-  roleRef:
-    apiGroup: rbac.authorization.k8s.io
-    kind: ClusterRole
-    name: cluster-admin
