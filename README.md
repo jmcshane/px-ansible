@@ -14,6 +14,7 @@ The following workflows are supported:
 * Async DR setup two clusters - [pxdr_setup.yaml](./pxdr_setup.yaml)
     * Tear down DR setup - [remove_clusterpair.yaml](./remove_clusterpair.yaml)
 * Register backup cluster - [register_backup_cluster.yaml](./register_backup_cluster.yaml)
+* Autopilot cluster resize - [autopilot_volume_resize.yaml](./autopilot_volume_resize.yaml)
 
 ### Async DR Setup/Teardown
 
@@ -34,3 +35,16 @@ $ ansible-playbook remove_clusterpair.yaml -e @<vars_file>
 ### Backup Cluster Add
 
 Using the inputs at [backup_cluster_register.yaml](./sample_inputs/backup_cluster_register.yaml), you can create new service accounts for backup to use and register the cluster with the backup UI.
+
+```console
+$ ansible-playbook backup_cluster_register.yaml -e @<vars_file>
+```
+
+### Autopilot volume resize
+
+This module requires no inputs, but follows the basic POC docs found at https://docs.portworx.com/poc/autopilot_volume-resize to
+demonstrate a volume resize in the current cluster context.
+
+```console
+$ ansible-playbook autopilot_volume_resize.yaml
+```

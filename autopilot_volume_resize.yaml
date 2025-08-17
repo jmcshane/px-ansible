@@ -1,0 +1,210 @@
+---
+- name: Demonstrate Autopilot Volume Resize
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    sc_name: "px-sc-autopilot"
+    pvc_name: "px-pvc-autopilot"
+    pod_name: "resizepod"
+    namespace: "autopilot-ansible-test"
+    app_label_value: "database"
+    autopilot_rule_name: "volume-resize"
+    initial_pvc_size: "2Gi"
+    resize_percentage: "100"
+    resize_limit: "10Gi"
+    fill_percentage_trigger: "50"
+    fill_size_mb: 1200
+    cleanup_resources: true
+
+  tasks:
+    - name: Create Portworx StorageClass with volume expansion enabled
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: StorageClass
+          apiVersion: storage.k8s.io/v1
+          metadata:
+            name: "{{ sc_name }}"
+          provisioner: kubernetes.io/portworx-volume
+          parameters:
+            repl: "2"
+            io_profile: "db_remote"
+            priority_io: "high"
+            nodiscard: "true"
+          allowVolumeExpansion: true
+
+    - name: Create a PersistentVolumeClaim with a label for Autopilot
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          kind: PersistentVolumeClaim
+          apiVersion: v1
+          metadata:
+            name: "{{ pvc_name }}"
+            namespace: "{{ namespace }}"
+            labels:
+              app: "{{ app_label_value }}"
+          spec:
+            storageClassName: "{{ sc_name }}"
+            accessModes:
+              - ReadWriteOnce
+            resources:
+              requests:
+                storage: "{{ initial_pvc_size }}"
+
+    - name: Create a Pod to consume the PVC and wait for it to be ready
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: v1
+          kind: Pod
+          metadata:
+            namespace: "{{ namespace }}"
+            name: "{{ pod_name }}"
+          spec:
+            containers:
+            - name: "{{ pod_name }}"
+              image: nginx
+              volumeMounts:
+              - mountPath: "/data"
+                name: pv-storage
+            volumes:
+            - name: pv-storage
+              persistentVolumeClaim:
+                claimName: "{{ pvc_name }}"
+        wait: yes
+        wait_timeout: 180
+        wait_condition:
+          type: Ready
+          status: "True"
+
+    - name: Create the AutopilotRule for volume resize
+      kubernetes.core.k8s:
+        state: present
+        definition:
+          apiVersion: "autopilot.libopenstorage.org/v1alpha1"
+          kind: "AutopilotRule"
+          metadata:
+            name: "{{ autopilot_rule_name }}"
+          spec:
+            selector:
+              matchLabels:
+                app: "{{ app_label_value }}"
+            conditions:
+              expressions:
+              - key: "100 * (px_volume_usage_bytes / px_volume_capacity_bytes)"
+                operator: "Gt"
+                values:
+                - "{{ fill_percentage_trigger }}"
+            actions:
+            - name: "openstorage.io.action.volume/resize"
+              params:
+                scalepercentage: "{{ resize_percentage }}"
+                maxsize: "{{ resize_limit }}"
+
+    - name: Wait until pod is in a healthy state
+      kubernetes.core.k8s_info:
+        kind: Pod
+        name: "{{ pod_name }}"
+        namespace: "{{ namespace }}"
+      register: pod_info
+      retries: 30
+      delay: 5
+      until:
+        - pod_info.resources | length > 0
+        - pod_info.resources[0].status.phase == 'Running'
+        - pod_info.resources[0].status.conditions is defined
+        - (pod_info.resources[0].status.conditions | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | first | default('')) == 'True'
+      changed_when: false
+
+    - name: Wait for AutopilotRule to transition to Normal state
+      kubernetes.core.k8s_info:
+        kind: Event
+        namespace: "{{ namespace }}"
+        field_selectors:
+          - involvedObject.kind=AutopilotRule
+          - involvedObject.name={{ autopilot_rule_name }}
+      register: rule_init_event
+      retries: 30
+      delay: 5
+      until: >-
+        'transition from Initializing => Normal' in
+        (rule_init_event.resources | map(attribute='message') | join(' '))
+      changed_when: false
+
+    - name: Fill the volume to trigger the AutopilotRule
+      kubernetes.core.k8s_exec:
+        pod: "{{ pod_name }}"
+        namespace: "{{ namespace }}"
+        # Per the docs, a string command is executed via "sh -c" in the container.
+        command: "dd if=/dev/urandom of=/data/dfile bs=1M count={{ fill_size_mb }}"
+      register: dd_command
+      changed_when: dd_command.rc == 0
+
+    - name: Verify that the volume has been resized
+      kubernetes.core.k8s_info:
+        kind: PersistentVolumeClaim
+        name: "{{ pvc_name }}"
+        namespace: "{{ namespace }}"
+      register: pvc_info
+      until: "pvc_info.resources[0].status.capacity.storage != initial_pvc_size"
+      retries: 60
+      delay: 10
+
+    - name: Display final PVC size
+      debug:
+        msg: "PVC {{ pvc_name }} successfully resized to {{ pvc_info.resources[0].status.capacity.storage }}."
+
+    - name: Wait for AutopilotRule events to be generated
+      kubernetes.core.k8s_info:
+        kind: Event
+        namespace: "{{ namespace }}"
+        field_selectors:
+          - involvedObject.kind=AutopilotRule
+          - involvedObject.name={{ autopilot_rule_name }}
+      register: event_info
+      failed_when: "(event_info.resources | length) < 5"
+      changed_when: false
+
+    - name: Confirm that all four AutopilotRule state transitions occurred
+      ansible.builtin.assert:
+        that:
+          - item in (event_info.resources | map(attribute='message') | join(' || '))
+        fail_msg: "Expected event transition '{{ item }}' was not found for AutopilotRule {{ autopilot_rule_name }}."
+        quiet: yes
+      loop:
+        - "transition from Normal => Triggered"
+        - "transition from Triggered => ActiveActionsPending"
+        - "transition from ActiveActionsPending => ActiveActionsInProgress"
+        - "transition from ActiveActionsInProgress => ActiveActionsTaken"
+      loop_control:
+        label: "Verifying transition: {{ item }}"
+
+    - name: Cleanup resources
+      block:
+        - name: Delete the Pod
+          kubernetes.core.k8s:
+            state: absent
+            kind: Pod
+            name: "{{ pod_name }}"
+
+        - name: Delete the PersistentVolumeClaim
+          kubernetes.core.k8s:
+            state: absent
+            kind: PersistentVolumeClaim
+            name: "{{ pvc_name }}"
+
+        - name: Delete the StorageClass
+          kubernetes.core.k8s:
+            state: absent
+            kind: StorageClass
+            name: "{{ sc_name }}"
+
+        - name: Delete the AutopilotRule
+          kubernetes.core.k8s:
+            state: absent
+            kind: AutopilotRule
+            api_version: autopilot.libopenstorage.org/v1alpha1
+            name: "{{ autopilot_rule_name }}"
+      when: cleanup_resources
