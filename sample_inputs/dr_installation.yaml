@@ -1,5 +1,4 @@
 # REQUIRED VARS FOR PORTWORX ASYNC DR PXDR-SA CLUSTERPAIR PLAYBOOK
-
 # Cluster A connection details
 cluster_a_kubeconfig:
 
@@ -10,7 +9,6 @@ cluster_b_kubeconfig:
 s3_access_key:
 s3_secret_key:
 s3_bucket:
-
 #OPTIONAL
 s3_endpoint:
 s3_region:
