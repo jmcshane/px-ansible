@@ -1,0 +1,14 @@
+---
+# Sample variables for the node failure resilience test (resilience_node_failure.yaml)
+
+# vCenter connection details required to power off/on the VM node
+vcenter_hostname: "your-vcenter.example.com"
+vcenter_username: "your-vcenter-user"
+vcenter_password: "your-vcenter-password"
+vcenter_datacenter: "your-datacenter-name"
+vcenter_folder: "your-vm-folder" # Optional: The folder where your k8s node VMs reside
+
+# Optional prefix for VM names if they differ from Kubernetes node names.
+# For example, if your k8s node is 'k8s-worker-1' but the VM name in vCenter
+# is 'px-k8s-worker-1', set vm_node_prefix to 'px-'.
+vm_node_prefix: ""

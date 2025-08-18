@@ -49,3 +49,15 @@ demonstrate a volume resize in the current cluster context.
 ```console
 $ ansible-playbook autopilot_volume_resize.yaml
 ```
+
+### Node Failure Resilience
+
+This playbook tests the resilience of stateful and stateless applications to a node failure. It identifies the node where test applications are running, powers off the underlying vSphere VM, and verifies that the pods are successfully rescheduled and running on a different node. 
+
+The variable inputs for this playbook can be found at [sample_inputs/vcenter_actions.yaml](./sample_inputs/vcenter_actions.yaml). You will need to provide your vCenter credentials and environment details in this file.
+
+To run the resilience test:
+
+```console
+ansible-playbook resilience_node_failure.yaml -e @sample_inputs/vcenter_actions.yaml 
+```
