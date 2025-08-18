@@ -4,3 +4,9 @@ collections:
     version: ">=10.7.0"
   - name: purepx.px_backup
     version: ">=2.9.0"
+  - name: vmware.vmware
+    version: ">=3.1.0"
+dependencies:
+  python:
+    - pyvmomi
+    - kubernetes

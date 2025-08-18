@@ -1,0 +1,348 @@
+---
+- name: Demonstrate Portworx Resilience to Node Failure
+  hosts: localhost
+  gather_facts: no
+
+  vars:
+    test_ns: "px-resilience-test"
+    sc_name: "px-sc-resilience"
+    pvc_name: "fio-pvc"
+    deployment_name: "fio"
+    nginx_deployment_name: "nginx-test"
+    nginx_app_label_value: "nginx-test"
+    node_selector_value: "true"
+    app_label_value: "fio"
+    cleanup_resources: true
+    vm_node_prefix: ""
+    stork_health_monitor_interval: "15"
+    ansible_python_interpreter: "{{ playbook_dir }}/venv/bin/python"
+
+  tasks:
+    - name: execution block
+      block:
+      - name: Find the Portworx StorageCluster
+        kubernetes.core.k8s_info:
+          kind: StorageCluster
+          api_version: core.libopenstorage.org/v1
+        register: sc_info
+
+      - name: Set StorageCluster name fact
+        ansible.builtin.set_fact:
+          px_storagecluster_name: "{{ sc_info.resources[0].metadata.name }}"
+        when: sc_info.resources | length > 0
+
+      - name: Fail if no StorageCluster is found
+        ansible.builtin.fail:
+          msg: "Could not find a Portworx StorageCluster. Please ensure Portworx is installed."
+        when: sc_info.resources | length == 0
+
+      - name: Display the found StorageCluster name
+        ansible.builtin.debug:
+          msg: "Found Portworx StorageCluster: {{ px_storagecluster_name }}"
+
+      - name: Create a namespace for the test
+        kubernetes.core.k8s:
+          name: "{{ test_ns }}"
+          api_version: v1
+          kind: Namespace
+          state: present
+
+      - name: Get schedulable worker nodes
+        kubernetes.core.k8s_info:
+          kind: Node
+          label_selectors:
+            - '!node-role.kubernetes.io/control-plane'
+            - '!node-role.kubernetes.io/master'
+        register: worker_nodes
+
+      - name: Fail if less than 2 worker nodes are available
+        ansible.builtin.fail:
+          msg: "This test requires at least 2 schedulable worker nodes."
+        when: worker_nodes.resources | length < 2
+
+      - name: Set node facts
+        ansible.builtin.set_fact:
+          first_node_name: "{{ worker_nodes.resources[0].metadata.name }}"
+          second_node_name: "{{ worker_nodes.resources[1].metadata.name }}"
+
+      - name: Display nodes to be used
+        ansible.builtin.debug:
+          msg: "Using Node 1: {{ first_node_name }} and Node 2: {{ second_node_name }}"
+
+      - name: Label the first node for pod scheduling
+        kubernetes.core.k8s:
+          state: patched
+          kind: Node
+          name: "{{ first_node_name }}"
+          definition:
+            metadata:
+              labels:
+                px/run-here: "{{ node_selector_value }}"
+
+      - name: Create a Portworx StorageClass
+        kubernetes.core.k8s:
+          state: present
+          definition:
+            kind: StorageClass
+            apiVersion: storage.k8s.io/v1
+            metadata:
+              name: "{{ sc_name }}"
+            provisioner: pxd.portworx.com
+            parameters:
+              repl: "2"
+              io_profile: "db_remote"
+              priority_io: "high"
+            allowVolumeExpansion: true
+
+      - name: Create a PersistentVolumeClaim
+        kubernetes.core.k8s:
+          state: present
+          definition:
+            apiVersion: v1
+            kind: PersistentVolumeClaim
+            metadata:
+              name: "{{ pvc_name }}"
+              namespace: "{{ test_ns }}"
+            spec:
+              storageClassName: "{{ sc_name }}"
+              accessModes:
+                - ReadWriteOnce
+              resources:
+                requests:
+                  storage: 5Gi
+
+      - name: Deploy stateful application and wait for it to be ready
+        kubernetes.core.k8s:
+          state: present
+          definition:
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: "{{ deployment_name }}"
+              namespace: "{{ test_ns }}"
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: "{{ app_label_value }}"
+              template:
+                metadata:
+                  labels:
+                    app: "{{ app_label_value }}"
+                spec:
+                  nodeSelector:
+                    px/run-here: "{{ node_selector_value }}"
+                  containers:
+                  - name: fio
+                    image: fedora:latest
+                    command: ["/bin/sh", "-c", "sleep infinity"]
+                    volumeMounts:
+                    - name: my-vol
+                      mountPath: /test-data
+                  volumes:
+                  - name: my-vol
+                    persistentVolumeClaim:
+                      claimName: "{{ pvc_name }}"
+          wait: yes
+          wait_timeout: 180
+
+      - name: Deploy stateless nginx application
+        kubernetes.core.k8s:
+          state: present
+          definition:
+            apiVersion: apps/v1
+            kind: Deployment
+            metadata:
+              name: "{{ nginx_deployment_name }}"
+              namespace: "{{ test_ns }}"
+            spec:
+              replicas: 1
+              selector:
+                matchLabels:
+                  app: "{{ nginx_app_label_value }}"
+              template:
+                metadata:
+                  labels:
+                    app: "{{ nginx_app_label_value }}"
+                spec:
+                  nodeSelector:
+                    px/run-here: "{{ node_selector_value }}"
+                  containers:
+                  - name: nginx
+                    image: nginx:latest
+          wait: yes
+          wait_timeout: 180
+
+      - name: Get the running fio pod and its node
+        kubernetes.core.k8s_info:
+          kind: Pod
+          namespace: "{{ test_ns }}"
+          label_selectors:
+            - "app={{ app_label_value }}"
+        register: fio_pod_info
+        retries: 10
+        delay: 5
+        until:
+          - fio_pod_info.resources | length > 0
+          - fio_pod_info.resources[0].status.phase == 'Running'
+          - fio_pod_info.resources[0].spec.nodeName == first_node_name
+
+      - name: Get the running nginx pod and its node
+        kubernetes.core.k8s_info:
+          kind: Pod
+          namespace: "{{ test_ns }}"
+          label_selectors:
+            - "app={{ nginx_app_label_value }}"
+        register: nginx_pod_info
+        retries: 10
+        delay: 5
+        until:
+          - nginx_pod_info.resources | length > 0
+          - nginx_pod_info.resources[0].status.phase == 'Running'
+          - nginx_pod_info.resources[0].spec.nodeName == first_node_name
+
+      - name: Set facts for the original pods and node
+        ansible.builtin.set_fact:
+          original_fio_pod_name: "{{ fio_pod_info.resources[0].metadata.name }}"
+          original_nginx_pod_name: "{{ nginx_pod_info.resources[0].metadata.name }}"
+          original_node_name: "{{ fio_pod_info.resources[0].spec.nodeName }}"
+
+      - name: Display original pod and node
+        ansible.builtin.debug:
+          msg: "Applications are running on node {{ original_node_name }}. Preparing for failover test."
+
+      - name: Label the second node to make it a failover target
+        kubernetes.core.k8s:
+          state: patched
+          kind: Node
+          name: "{{ second_node_name }}"
+          definition:
+            metadata:
+              labels:
+                px/run-here: "{{ node_selector_value }}"
+
+      - name: Power off the node where the pod is running
+        vmware.vmware.vm_powerstate:
+          hostname: "{{ vcenter_hostname }}"
+          username: "{{ vcenter_username }}"
+          password: "{{ vcenter_password }}"
+          datacenter: "{{ vcenter_datacenter }}"
+          folder: "{{ vcenter_folder }}"
+          validate_certs: false
+          name: "{{ vm_node_prefix }}{{ original_node_name }}"
+          state: powered-off
+          force: true
+
+      - name: Wait for the fio pod to be rescheduled on the new node
+        kubernetes.core.k8s_info:
+          kind: Pod
+          namespace: "{{ test_ns }}"
+          label_selectors:
+            - "app={{ app_label_value }}"
+        register: new_fio_pod_info
+        retries: 30
+        delay: 30
+        until:
+          - new_fio_pod_info.resources | length > 0
+          - new_fio_pod_info.resources[0].metadata.name != original_fio_pod_name
+          - new_fio_pod_info.resources[0].spec.nodeName == second_node_name
+          - new_fio_pod_info.resources[0].status.phase == 'Running'
+        changed_when: false
+
+      - name: Wait for the nginx pod to be rescheduled on the new node
+        kubernetes.core.k8s_info:
+          kind: Pod
+          namespace: "{{ test_ns }}"
+          label_selectors:
+            - "app={{ nginx_app_label_value }}"
+        register: new_nginx_pod_info
+        retries: 30
+        delay: 30
+        until:
+          - new_nginx_pod_info.resources | length > 0
+          - new_nginx_pod_info.resources[0].metadata.name != original_nginx_pod_name
+          - new_nginx_pod_info.resources[0].spec.nodeName == second_node_name
+          - new_nginx_pod_info.resources[0].status.phase == 'Running'
+        changed_when: false
+
+      - name: Display new pod and node location
+        ansible.builtin.debug:
+          msg: "Pods successfully failed over. New fio pod {{ new_fio_pod_info.resources[0].metadata.name }} and new nginx pod {{ new_nginx_pod_info.resources[0].metadata.name }} are running on node {{ second_node_name }}."
+      always:
+      - name: Cleanup all test resources
+        block:
+          - name: Remove label from the first node
+            no_log: true
+            kubernetes.core.k8s:
+              state: patched
+              kind: Node
+              name: "{{ first_node_name }}"
+              definition:
+                metadata:
+                  labels:
+                    px/run-here: null
+            when: first_node_name is defined
+
+          - name: Remove label from the second node
+            no_log: true
+            kubernetes.core.k8s:
+              state: patched
+              kind: Node
+              name: "{{ second_node_name }}"
+              definition:
+                metadata:
+                  labels:
+                    px/run-here: null
+            when: second_node_name is defined
+
+          - name: Power on the original node
+            vmware.vmware.vm_powerstate:
+              hostname: "{{ vcenter_hostname }}"
+              username: "{{ vcenter_username }}"
+              password: "{{ vcenter_password }}"
+              datacenter: "{{ vcenter_datacenter }}"
+              folder: "{{ vcenter_folder }}"
+              validate_certs: false
+              name: "{{ vm_node_prefix }}{{ original_node_name }}"
+              state: powered-on
+              force: true
+            when: original_node_name is defined
+
+          - name: Delete Fio Deployment
+            no_log: true
+            kubernetes.core.k8s:
+              state: absent
+              kind: Deployment
+              namespace: "{{ test_ns }}"
+              name: "{{ deployment_name }}"
+
+          - name: Delete Nginx Deployment
+            no_log: true
+            kubernetes.core.k8s:
+              state: absent
+              kind: Deployment
+              namespace: "{{ test_ns }}"
+              name: "{{ nginx_deployment_name }}"
+
+          - name: Delete PersistentVolumeClaim
+            no_log: true
+            kubernetes.core.k8s:
+              state: absent
+              kind: PersistentVolumeClaim
+              namespace: "{{ test_ns }}"
+              name: "{{ pvc_name }}"
+
+          - name: Delete StorageClass
+            no_log: true
+            kubernetes.core.k8s:
+              state: absent
+              kind: StorageClass
+              name: "{{ sc_name }}"
+
+          - name: Delete Namespace
+            no_log: true
+            kubernetes.core.k8s:
+              state: absent
+              kind: Namespace
+              name: "{{ test_ns }}"
+        when: cleanup_resources

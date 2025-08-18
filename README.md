@@ -15,6 +15,7 @@ The following workflows are supported:
     * Tear down DR setup - [remove_clusterpair.yaml](./remove_clusterpair.yaml)
 * Register backup cluster - [register_backup_cluster.yaml](./register_backup_cluster.yaml)
 * Autopilot cluster resize - [autopilot_volume_resize.yaml](./autopilot_volume_resize.yaml)
+* Node failure resilience test - [resilience_node_failure.yaml](./resilience_node_failure.yaml)
 
 ### Async DR Setup/Teardown
 
