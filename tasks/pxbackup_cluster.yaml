@@ -39,4 +39,9 @@
     token: "{{ pxbackup_auth_result.access_token }}"
     kubeconfig: "{{ lookup('ansible.builtin.file', cluster.kubeconfig_path) }}"
     name: "{{ cluster.name }}"
+  failed_when:
+  - "pxbackup_register_result.msg is defined and not 'code = AlreadyExists' in pxbackup_register_result.msg"
+  register: pxbackup_register_result
+
+
 
