@@ -6,7 +6,5 @@ collections:
     version: ">=2.9.0"
   - name: vmware.vmware
     version: ">=3.1.0"
-dependencies:
-  python:
-    - pyvmomi
-    - kubernetes
+  - name: kubernetes.core
+  - name: amazon.aws
