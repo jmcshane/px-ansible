@@ -1,0 +1,96 @@
+---
+    - name: Request bearer token
+      purepx.px_backup.auth:
+        auth_url: "{{ pxcentral_auth_url }}"
+        client_id: "{{ pxcentral_client_id | default('pxcentral') }}"
+        username: "{{ px_backup_username }}"
+        password: "{{ px_backup_password }}"
+        token_duration: "{{ token_duration | default('1h') }}"
+        verify_ssl: "{{ pxcentral_verify_ssl | default(false) }}"
+      register: pxbackup_auth_result
+
+    - name: Backup Location Enumerate call
+      purepx.px_backup.backup_location:
+        api_url: "{{ px_backup_url }}"
+        org_id: "{{ org_id | default('default') }}"
+        token: "{{ pxbackup_auth_result.access_token }}"
+        operation: INSPECT_ALL
+      register: backup_location_result
+
+    - name: cluster Enumerate call
+      purepx.px_backup.cluster:
+        api_url: "{{ px_backup_url }}"
+        org_id: "{{ org_id | default('default') }}"
+        token: "{{ pxbackup_auth_result.access_token }}"
+        operation: INSPECT_ALL
+      register: cluster_result
+
+    - set_fact:
+        sp_name: "{{item.cluster_name}}-{{ item.backup_location_name }}-daily"
+
+    - name: Create schedule policy
+      purepx.px_backup.schedule_policy:
+        operation: CREATE
+        api_url: "{{ px_backup_url }}"
+        token: "{{ pxbackup_auth_result.access_token }}"
+        name: "{{ sp_name }}"
+        org_id: "{{ org_id | default('default') }}"
+        schedule_policy:
+          auto_delete: True
+          daily:
+            incremental_count:
+              count: 5
+            retain: 6
+            time: 05:00AM
+      register: sp_result
+      failed_when:
+      - sp_result.msg is defined and not 'object already exists' in sp_result.msg
+
+    - name: schedulepolicy Enumerate call
+      purepx.px_backup.schedule_policy:
+        api_url: "{{ px_backup_url }}"
+        org_id: "{{ org_id | default('default') }}"
+        token: "{{ pxbackup_auth_result.access_token }}"
+        operation: INSPECT_ALL
+      register: sp_list
+
+
+    - set_fact:
+        backup_location: "{{ backup_location_result.backup_locations | selectattr('metadata.name', 'equalto', item.backup_location_name) | first }}"
+    - debug:
+        var: cluster_result
+    - debug:
+        var: item
+
+    - set_fact:
+        cluster: "{{ cluster_result.clusters | selectattr('metadata.name', 'equalto', item.cluster_name) | first }}"
+    - set_fact:
+        sp: "{{ sp_list.schedule_policies | selectattr('metadata.name', 'equalto', sp_name) | first }}"
+
+    - name: create backup schedule
+      purepx.px_backup.backup_schedule:
+        operation: CREATE
+        api_url: "{{ px_backup_url }}"
+        token: "{{ pxbackup_auth_result.access_token }}"
+        name: "{{ sp_name }}"
+        org_id: "{{ org_id | default('default') }}"
+        reclaim_policy: "Delete"
+        parallel_backup: true
+        namespaces: "{{ item.vm_namespace }}"
+        labels:
+          backup-type: "vm"
+          retention: "weekly"
+        backup_object_type:
+          type: "All"
+        schedule_policy_ref:
+          name: "{{ sp.metadata.name }}"
+          uid: "{{ sp.metadata.uid }}"
+        backup_location_ref:
+          name: "{{ backup_location.metadata.name }}"
+          uid: "{{ backup_location.metadata.uid }}"
+        cluster_ref:
+          name: "{{ cluster.metadata.name }}"
+          uid: "{{ cluster.metadata.uid }}"
+      register: schedule_result
+      failed_when:
+      - schedule_result.msg is defined and not 'object already exists' in schedule_result.msg

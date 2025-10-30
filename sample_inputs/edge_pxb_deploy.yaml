@@ -1,0 +1,14 @@
+px_backup_url: 
+pxcentral_auth_url: 
+
+clusters:
+  - cluster_name: "cluster1"
+    kubeconfig: 
+    backup_location_name: 
+    vm_namespace:
+    - ""
+  - cluster_name: "cluster2"
+    kubeconfig: 
+    backup_location_name: 
+    vm_namespace:
+    - ""

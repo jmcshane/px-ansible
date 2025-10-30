@@ -1,0 +1,14 @@
+- name: backup auth
+  hosts: localhost
+  gather_facts: no
+
+  tasks:
+  - name: create scheduled vm backups
+    include_tasks:
+      file: "{{ playbook_dir }}/tasks/setup_backup_schedule.yaml"
+      apply:
+        tags:
+        - backup
+    loop: "{{ clusters }}"
+    tags:
+    - backup
