@@ -61,3 +61,13 @@ To run the resilience test:
 ```console
 ansible-playbook resilience_node_failure.yaml -e @sample_inputs/vcenter_actions.yaml 
 ```
+
+### Edge PXB Deploy - Create Schedule
+
+This playbook creates a VM backup schedule for a subset of namespaces for a set of clusters provided by the `clusters` variable.
+
+To run this playbook:
+
+```console
+ansible-playbook edge_pxb_deploy.yaml -e @sample_inputs/edge_pxb_deploy.yaml
+```
