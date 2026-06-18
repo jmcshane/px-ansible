@@ -21,7 +21,7 @@ configmap_name: "px-versions"    # ConfigMap metadata.name
 # Prefer absolute paths; relative paths resolve against the ansible
 # remote working dir, not the playbook dir.
 configmap_out: "{{ playbook_dir }}/px-versions-configmap.yaml"
-imageset_out:  "{{ playbook_dir }}/../sample.yaml"
+imageset_out:  "{{ playbook_dir }}/image-set-configuration.yaml"
 
 # --- ImageSetConfiguration apiVersion ---
 imageset_api_version: "mirror.openshift.io/v2alpha1"
