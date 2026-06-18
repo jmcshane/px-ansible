@@ -1,0 +1,68 @@
+---
+# Sample group_vars for generate-px-manifests.yaml
+#
+# Auto-loaded when the file is at ansible/group_vars/all.yml relative to
+# the playbook. Copy this example to that name and edit, or pass via
+# `-e @ansible/group_vars/all.yml` to be explicit.
+#
+# Any var not set here falls back to the playbook default applied by the
+# "Apply defaults for unset inputs" task.
+
+# --- Upstream version selection ---
+px_version: "3.6.1"      # Portworx version (URL path segment)
+kbver: "1.32.7"          # Kubernetes version (URL query param)
+opver: "26.2.0"          # Portworx Operator version (URL query param)
+
+# --- ConfigMap rendering ---
+namespace: "portworx"            # Namespace for the px-versions ConfigMap
+configmap_name: "px-versions"    # ConfigMap metadata.name
+
+# --- Output paths (absolute, or relative to ansible remote cwd) ---
+# Prefer absolute paths; relative paths resolve against the ansible
+# remote working dir, not the playbook dir.
+configmap_out: "{{ playbook_dir }}/px-versions-configmap.yaml"
+imageset_out:  "{{ playbook_dir }}/../sample.yaml"
+
+# --- ImageSetConfiguration apiVersion ---
+imageset_api_version: "mirror.openshift.io/v2alpha1"
+
+# --- Optional category selection ---
+# The "default" category is always included. Add any of:
+#   autopilot, telemetry, monitoring, px-cache,
+#   fusion, ocp-console-plugin, cert-manager
+categories:
+  - monitoring
+  - cert-manager
+  # - autopilot
+  # - telemetry
+  # - px-cache
+  # - fusion
+  # - ocp-console-plugin
+
+# --- Advanced: override the category -> components mapping ---
+# Uncomment and edit only if you need to reshape the groupings.
+# Keys are category names; values are lists of component keys exactly
+# as they appear in the upstream version manifest.
+#
+# component_categories:
+#   default:
+#     - stork
+#     - clusterDiags
+#     - csiPlugin
+#     - csiMigrator
+#     - csiLivenessProbe
+#     - csiNodeDriverRegistrar
+#     - csiProvisioner
+#     - csiAttacher
+#     - csiResizer
+#     - csiSnapshotter
+#     - csiSnapshotController
+#     - pxLibUpdate
+#     - kubeScheduler
+#     - kubeControllerManager
+#     - pause
+#   monitoring:
+#     - prometheus
+#     - prometheusOperator
+#     - prometheusConfigReloader
+#     - alertManager
